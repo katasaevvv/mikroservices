@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from catalog_service.cache.cache_product import CacheProduct
 from catalog_service.db.session import get_session
 from catalog_service.config import Settings
 from catalog_service.security.tokens import TokenVerifier
@@ -60,9 +61,10 @@ def require_admin(
 
 SessionDependency = Annotated[AsyncSession, Depends(get_session)]
 
-async def get_product_service(session: SessionDependency) -> ProductsService:
+async def get_product_service(session: SessionDependency, request: Request) -> ProductsService:
     return ProductsService(
         session=session,
+        cache=CacheProduct(request.app.state.redis),
         repository=ProductRepository(session=session),
     )
 
@@ -77,6 +79,7 @@ async def get_media_service(
     return ProductMediaService(
         session=session,
         products=ProductRepository(session),
+        cache=CacheProduct(request.app.state.redis),
         images=ProductImageRepository(session),
         storage=storage,
     )

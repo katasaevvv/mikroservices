@@ -1,9 +1,11 @@
 from collections.abc import Callable
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
 
+from catalog_service.cache.cache_product import CacheProduct
 from catalog_service.db.models.product_image import ProductImage
 from catalog_service.exceptions import (
     ProductImageLimitError,
@@ -133,6 +135,7 @@ def setup_media(monkeypatch: pytest.MonkeyPatch) -> Callable[..., tuple]:
         service = ProductMediaService(
             session=session,  # type: ignore[arg-type]
             products=FakeProducts(exists, model_key),  # type: ignore[arg-type]
+            cache=AsyncMock(spec=CacheProduct),
             images=image_repo,  # type: ignore[arg-type]
             storage=storage,  # type: ignore[arg-type]
         )
@@ -156,6 +159,7 @@ async def test_add_image_saves_two_objects_and_image_row(setup_media: Callable[.
     }
     assert storage.delete_calls == []
     assert session.begin_calls == 1
+    service._cache.invalidate_product.assert_awaited_once_with(product_id)
 
 
 async def test_second_upload_failure_cleans_attempted_keys(
@@ -170,6 +174,7 @@ async def test_second_upload_failure_cleans_attempted_keys(
     assert images.images == []
     assert storage.objects == {}
     assert storage.delete_calls == list(reversed(storage.put_calls))
+    service._cache.invalidate_product.assert_not_awaited()
 
 
 async def test_unknown_product_cleans_uploaded_objects(setup_media: Callable[..., tuple]) -> None:
@@ -181,6 +186,7 @@ async def test_unknown_product_cleans_uploaded_objects(setup_media: Callable[...
     assert images.images == []
     assert storage.objects == {}
     assert len(storage.delete_calls) == 2
+    service._cache.invalidate_product.assert_not_awaited()
 
 
 async def test_ninth_image_is_rejected_and_cleaned(setup_media: Callable[..., tuple]) -> None:
@@ -194,6 +200,7 @@ async def test_ninth_image_is_rejected_and_cleaned(setup_media: Callable[..., tu
     assert images.images == existing
     assert storage.objects == {}
     assert len(storage.delete_calls) == 2
+    service._cache.invalidate_product.assert_not_awaited()
 
 
 async def test_delete_image_compacts_positions_then_removes_objects(
@@ -211,6 +218,7 @@ async def test_delete_image_compacts_positions_then_removes_objects(
     assert storage.delete_calls == [middle.large_object_key, middle.thumbnail_object_key]
     assert storage.objects == {}
     assert session.begin_calls == 1
+    service._cache.invalidate_product.assert_awaited_once_with(product_id)
 
 
 async def test_delete_unknown_image_does_not_touch_storage(
@@ -256,6 +264,7 @@ async def test_reorder_images_updates_positions_without_touching_storage(
     ]
     assert session.begin_calls == 1
     assert storage.put_calls == storage.delete_calls == []
+    service._cache.invalidate_product.assert_awaited_once_with(product_id)
 
 
 @pytest.mark.parametrize("ids", ["missing", "duplicate", "foreign"])
@@ -308,6 +317,7 @@ async def test_model_upload_and_replace_use_new_key_and_cleanup_old(
     assert storage.objects == {second_key: b"second"}
     assert storage.delete_calls == [first_key]
     assert session.begin_calls == 2
+    assert service._cache.invalidate_product.await_count == 2
 
 
 async def test_model_upload_failure_does_not_start_db_transaction(
@@ -379,6 +389,7 @@ async def test_delete_model_is_repeatable_and_does_not_hold_transaction_during_s
     assert storage.delete_calls == [key]
     assert storage.objects == {}
     assert session.begin_calls == 2
+    assert service._cache.invalidate_product.await_count == 2
 
 
 async def test_model_cleanup_failure_does_not_undo_replacement(

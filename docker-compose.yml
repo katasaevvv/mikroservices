@@ -54,6 +54,7 @@ x-catalog-service: &catalog-service
     POSTGRESQL_PORT: 5432
     RABBITMQ_HOST: rabbitmq
     RABBITMQ_PORT: 5672
+    REDIS_URL: ${REDIS_URL}
     JWT_PUBLIC_KEY_PATH: /run/secrets/auth_jwt_public.pem
   restart: unless-stopped
 

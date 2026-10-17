@@ -10,6 +10,7 @@ from catalog_service.api import app
 from catalog_service.db.models.product_image import ProductImage
 from catalog_service.db.models.products import Product
 from catalog_service.exceptions import ProductImageOrderConflictError
+from catalog_service.mappers.products import to_public_product
 from catalog_service.media.glb_validation import InvalidProductModelError
 from catalog_service.routers.dependencies import (
     get_current_principal,
@@ -17,6 +18,7 @@ from catalog_service.routers.dependencies import (
     get_product_service,
     get_token_verifier,
 )
+from catalog_service.schemas.products import ProductListResponse
 
 
 @pytest.fixture
@@ -73,7 +75,7 @@ async def test_public_product_returns_ordered_image_urls(isolated_app: object) -
             thumbnail_object_key=f"products/{item.id}/images/{first_id}/thumbnail.webp",
         ),
     ]
-    service = SimpleNamespace(get_product_by_id=AsyncMock(return_value=item))
+    service = SimpleNamespace(get_product_by_id=AsyncMock(return_value=to_public_product(item)))
     app.dependency_overrides[get_product_service] = lambda: service
 
     async with httpx.AsyncClient(
@@ -95,7 +97,16 @@ async def test_public_product_returns_ordered_image_urls(isolated_app: object) -
 async def test_public_product_list_supports_products_without_images(isolated_app: object) -> None:
     item = product()
     item.images = []
-    service = SimpleNamespace(get_products=AsyncMock(return_value=([item], 1)))
+    service = SimpleNamespace(
+        get_products=AsyncMock(
+            return_value=ProductListResponse(
+                items=[to_public_product(item)],
+                total=1,
+                limit=20,
+                offset=0,
+            )
+        )
+    )
     app.dependency_overrides[get_product_service] = lambda: service
 
     async with httpx.AsyncClient(
@@ -106,13 +117,17 @@ async def test_public_product_list_supports_products_without_images(isolated_app
     assert response.status_code == 200
     assert response.json()["items"][0]["images"] == []
     assert response.json()["items"][0]["model_3d_url"] is None
+    assert response.json()["total"] == 1
+    assert response.json()["limit"] == 20
+    assert response.json()["offset"] == 0
+    service.get_products.assert_awaited_once_with(limit=20, offset=0)
 
 
 async def test_public_product_exposes_model_url(isolated_app: object) -> None:
     item = product()
     item.images = []
     item.model_3d_key = f"products/{item.id}/models/{uuid4()}.glb"
-    service = SimpleNamespace(get_product_by_id=AsyncMock(return_value=item))
+    service = SimpleNamespace(get_product_by_id=AsyncMock(return_value=to_public_product(item)))
     app.dependency_overrides[get_product_service] = lambda: service
 
     async with httpx.AsyncClient(

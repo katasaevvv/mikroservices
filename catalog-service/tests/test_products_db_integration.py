@@ -1,9 +1,11 @@
 from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from catalog_service.cache.cache_product import CacheProduct
 from catalog_service.exceptions import InsufficientStockError, ProductNotFoundError
 from catalog_service.repositories.products import ProductRepository
 from catalog_service.schemas.products import ProductCreate, ProductUpdate
@@ -15,7 +17,15 @@ pytest_plugins = ("tests.test_reservations_db_integration",)
 
 
 def service(session: AsyncSession) -> ProductsService:
-    return ProductsService(session=session, repository=ProductRepository(session))
+    cache = MagicMock(spec=CacheProduct)
+    cache.build_product_cache_key.side_effect = (
+        lambda product_id: f"cache:product:{product_id}"
+    )
+    cache.get_cache = AsyncMock(return_value=None)
+    cache.set_cache = AsyncMock()
+    cache.invalidate_lists = AsyncMock()
+    cache.invalidate_product = AsyncMock()
+    return ProductsService(session=session, cache=cache, repository=ProductRepository(session))
 
 
 async def test_create_product_persists_and_can_be_read(db_session: AsyncSession) -> None:

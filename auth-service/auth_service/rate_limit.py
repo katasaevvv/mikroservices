@@ -15,4 +15,5 @@ def get_client_address(request: Request) -> str:
 limiter = Limiter(
     key_func=get_client_address, 
     storage_uri=settings.redis_url,
+    strategy="moving-window",
 )

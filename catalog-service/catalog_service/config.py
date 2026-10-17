@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     jwt_issuer: str = Field(min_length=1, default="auth-service")
     jwt_audience: str = Field(min_length=1, default="orderflow-services")
 
+    redis_url: str = Field(min_length=1)
+
     @property
     def postgresql_url(self) -> URL:
         return URL.create(

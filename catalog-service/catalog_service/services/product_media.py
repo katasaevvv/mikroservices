@@ -11,6 +11,7 @@ from catalog_service.exceptions import (
     ProductImageOrderConflictError,
     ProductNotFoundError,
 )
+from catalog_service.cache.cache_product import CacheProduct
 from catalog_service.media.glb_validation import validate_product_glb
 from catalog_service.media.image_processing import process_product_image
 from catalog_service.repositories.product_image import ProductImageRepository
@@ -26,11 +27,13 @@ class ProductMediaService:
         self,
         session: AsyncSession,
         products: ProductRepository,
+        cache: CacheProduct,
         images: ProductImageRepository,
         storage: S3MediaStorage,
     ) -> None:
         self._session = session
         self._products = products
+        self._cache = cache
         self._images = images
         self._storage = storage
 
@@ -77,6 +80,7 @@ class ProductMediaService:
                 await self._images.add(image)
 
             committed = True
+            await self._cache.invalidate_product(product_id)
             return image
 
         finally:
@@ -104,11 +108,14 @@ class ProductMediaService:
             for position, remaining_image in enumerate(remaining):
                 remaining_image.position = position
 
+        await self._cache.invalidate_product(product_id)
+        
         for key in keys:
             try:
                 await self._storage.delete(key)
             except Exception:
                 logger.exception("media.cleanup.failed")
+        
 
     async def reorder_images(
         self, product_id: UUID, image_ids: list[UUID]
@@ -126,6 +133,8 @@ class ProductMediaService:
             ordered_images = [images_by_id[image_id] for image_id in image_ids]
             for position, image in enumerate(ordered_images):
                 image.position = position
+
+        await self._cache.invalidate_product(product_id)
 
         return ordered_images
 
@@ -156,6 +165,7 @@ class ProductMediaService:
                 await self._storage.delete(old_key)
             except Exception:
                 logger.exception("media.cleanup.failed", extra={"product_id": str(product_id)})
+        await self._cache.invalidate_product(product_id)
         return new_key
 
     async def delete_model(self, product_id: UUID) -> None:
@@ -171,3 +181,5 @@ class ProductMediaService:
                 await self._storage.delete(old_key)
             except Exception:
                 logger.exception("media.cleanup.failed", extra={"product_id": str(product_id)})
+                
+        await self._cache.invalidate_product(product_id)

@@ -23,7 +23,7 @@ def get_client_address(request: Request) -> str:
         return real_ip
     return get_remote_address(request)
 
-limiter = Limiter(key_func=get_client_address, storage_uri=settings.redis_url)
+limiter = Limiter(key_func=get_client_address, storage_uri=settings.redis_url, strategy="moving-window")
 
 @router.post(
     "",

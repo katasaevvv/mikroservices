@@ -1,9 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from catalog_service.routers.dependencies import get_settings
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
+from redis.asyncio import Redis
 
 from catalog_service.config import MediaSettings
 from catalog_service.db.session import async_engine
@@ -30,8 +32,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         async with create_s3_storage(settings=media_settings) as storage:
             app.state.media_storage = storage
+            app.state.redis = Redis.from_url(
+                get_settings().redis_url, 
+                decode_responses=True, 
+                socket_connect_timeout=1.0, 
+                socket_timeout=1.0
+            )
             yield
     finally:
+        await app.state.redis.aclose()
         await async_engine.dispose()
 
 

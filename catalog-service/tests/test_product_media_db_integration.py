@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from catalog_service.cache.cache_product import CacheProduct
 from catalog_service.exceptions import ProductImageLimitError
 from catalog_service.media.image_processing import ProcessedProductImage
 from catalog_service.repositories.product_image import ProductImageRepository
@@ -19,6 +20,7 @@ def media_service(session: AsyncSession, storage: S3MediaStorage) -> ProductMedi
     return ProductMediaService(
         session=session,
         products=ProductRepository(session),
+        cache=AsyncMock(spec=CacheProduct),
         images=ProductImageRepository(session),
         storage=storage,
     )
